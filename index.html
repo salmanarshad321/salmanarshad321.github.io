@@ -179,6 +179,7 @@ createApp({
                 intervalId: null
             };
 
+            // Start the timer immediately
             promise.intervalId = setInterval(() => updateTimer(promise), 1000);
             promises.value.push(promise);
             PromiseRepository.savePromises(promises.value);
