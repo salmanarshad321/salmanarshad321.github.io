@@ -179,7 +179,6 @@ createApp({
                 intervalId: null
             };
 
-            // Start the timer immediately
             promise.intervalId = setInterval(() => updateTimer(promise), 1000);
             promises.value.push(promise);
             PromiseRepository.savePromises(promises.value);
@@ -189,6 +188,8 @@ createApp({
             if (flatpickrInstance.value) {
                 flatpickrInstance.value.clear();
             }
+
+            restoreTimers();
         };
 
         const updateTimer = (promise) => {
@@ -229,13 +230,17 @@ createApp({
             return `${days > 0 ? `${days}d ` : ''}${hours > 0 ? `${hours}h ` : ''}${mins}m ${secs}s`;
         };
 
-        // Restore timers on page load
-        onMounted(() => {
+        const restoreTimers = () => {
             promises.value.forEach(promise => {
                 if (!promise.fulfilled && !promise.broken) {
                     promise.intervalId = setInterval(() => updateTimer(promise), 1000);
                 }
             });
+        };
+
+        // Restore timers on page load
+        onMounted(() => {
+            restoreTimers();
         });
 
         // Cleanup timers on page unload
