@@ -9,11 +9,20 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    <!-- Add FontAwesome for the settings icon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="bg-gray-100">
     <div id="app" class="min-h-screen p-4">
         <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
-            <h1 class="text-3xl font-bold text-center text-green-600 mb-6">Promise</h1>
+            <!-- Header and Settings Button -->
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-3xl font-bold text-center text-green-600">Promise</h1>
+                <!-- Beautiful Settings Button -->
+                <button @click="showSettings = true" class="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all flex items-center gap-2">
+                    <i class="fas fa-cog"></i> Settings
+                </button>
+            </div>
 
             <!-- Score Card -->
             <div class="grid grid-cols-3 gap-4 mb-6 text-center">
@@ -39,6 +48,15 @@
                 <button @click="filter = 'broken'" :class="{'bg-red-600 text-white': filter === 'broken'}" class="px-4 py-2 rounded-lg border border-red-600 hover:bg-red-600 hover:text-white transition-all">Broken</button>
             </div>
 
+            <!-- Sorting -->
+            <div class="flex gap-2 mb-6">
+                <select v-model="sortBy" class="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                    <option value="time">Sort by Time Remaining</option>
+                    <option value="created">Sort by Creation Date</option>
+                    <option value="alphabetical">Sort Alphabetically</option>
+                </select>
+            </div>
+
             <!-- Add Promise Section -->
             <div class="flex flex-col gap-4 mb-6">
                 <input v-model="newPromise" type="text" placeholder="Enter your promise" class="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
@@ -57,7 +75,7 @@
 
             <!-- Promise List -->
             <ul class="space-y-4">
-                <li v-for="(promise, index) in filteredPromises" :key="index" :class="{'border-green-500 bg-green-50': promise.fulfilled, 'border-red-500 bg-red-50': promise.broken}" class="p-4 border rounded-lg">
+                <li v-for="(promise, index) in sortedAndFilteredPromises" :key="index" :class="{'border-green-500 bg-green-50': promise.fulfilled, 'border-red-500 bg-red-50': promise.broken}" class="p-4 border rounded-lg">
                     <div class="flex justify-between items-center mb-2">
                         <span class="text-lg font-semibold">{{ promise.text }}</span>
                         <span class="text-sm text-gray-600">{{ formatTime(promise.remainingTime) }}</span>
@@ -74,11 +92,43 @@
                 </li>
             </ul>
         </div>
+
+        <!-- Settings Page -->
+        <div v-if="showSettings" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-md p-6 max-w-md w-full">
+                <h2 class="text-2xl font-bold text-center text-blue-600 mb-6">Settings</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Default Time Unit</label>
+                        <select v-model="settings.defaultTimeUnit" class="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                            <option value="minutes">Minutes</option>
+                            <option value="hours">Hours</option>
+                            <option value="days">Days</option>
+                            <option value="datetime">Select Date & Time</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Enable Confetti</label>
+                        <input type="checkbox" v-model="settings.enableConfetti" class="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Progress Bar Colors</label>
+                        <div class="flex gap-4">
+                            <input type="color" v-model="settings.progressColors.green" class="p-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                            <input type="color" v-model="settings.progressColors.yellow" class="p-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                            <input type="color" v-model="settings.progressColors.red" class="p-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                        </div>
+                    </div>
+                    <button @click="saveSettings" class="mr-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Save Settings</button>
+                    <button @click="showSettings = false" class="p-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script>
-        const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+        const { createApp, ref, computed, onMounted, onUnmounted, watch } = Vue;
 
         // Repository Pattern for Local Storage
         const PromiseRepository = {
@@ -91,6 +141,24 @@
             }
         };
 
+        const SettingsRepository = {
+            getSettings() {
+                const settings = localStorage.getItem('settings');
+                return settings ? JSON.parse(settings) : {
+                    defaultTimeUnit: 'minutes',
+                    enableConfetti: true,
+                    progressColors: {
+                        green: '#16a34a',
+                        yellow: '#f59e0b',
+                        red: '#dc2626'
+                    }
+                };
+            },
+            saveSettings(settings) {
+                localStorage.setItem('settings', JSON.stringify(settings));
+            }
+        };
+
         createApp({
             setup() {
                 const newPromise = ref('');
@@ -100,6 +168,9 @@
                 const flatpickrInstance = ref(null);
                 const promises = ref(PromiseRepository.getPromises());
                 const filter = ref('all');
+                const sortBy = ref('time');
+                const settings = ref(SettingsRepository.getSettings());
+                const showSettings = ref(false);
 
                 // Computed Properties
                 const fulfilledCount = computed(() => promises.value.filter(p => p.fulfilled).length);
@@ -116,6 +187,20 @@
                             return promises.value.filter(p => p.broken);
                         default:
                             return promises.value;
+                    }
+                });
+
+                const sortedAndFilteredPromises = computed(() => {
+                    const filtered = filteredPromises.value;
+                    switch (sortBy.value) {
+                        case 'time':
+                            return filtered.slice().sort((a, b) => a.remainingTime - b.remainingTime);
+                        case 'created':
+                            return filtered.slice().sort((a, b) => a.createdAt - b.createdAt);
+                        case 'alphabetical':
+                            return filtered.slice().sort((a, b) => a.text.localeCompare(b.text));
+                        default:
+                            return filtered;
                     }
                 });
 
@@ -178,7 +263,8 @@
                         remainingTime: totalTime,
                         fulfilled: false,
                         broken: false,
-                        intervalId: null
+                        intervalId: null,
+                        createdAt: new Date().getTime()
                     };
 
                     promise.intervalId = setInterval(() => updateTimer(promise), 1000);
@@ -195,17 +281,19 @@
                 };
 
                 const updateTimer = (promise) => {
-                    if (promise.remainingTime <= 0) {
+                    if (promise.remainingTime <= 0 && promise.broken === false) {
                         clearInterval(promise.intervalId);
                         promise.broken = true;
                         PromiseRepository.savePromises(promises.value);
                         console.log('Promise broken!');
-                        confetti({
-                            particleCount: 100,
-                            spread: 70,
-                            origin: { y: 0.6 },
-                            colors: ['#ff0000', '#ff6666', '#ff9999']
-                        });
+                        if (settings.value.enableConfetti) {
+                            confetti({
+                                particleCount: 100,
+                                spread: 70,
+                                origin: { y: 0.6 },
+                                colors: ['#ff0000', '#ff6666', '#ff9999']
+                            });
+                        }
                         return;
                     } else {
                         PromiseRepository.savePromises(promises.value);
@@ -219,11 +307,13 @@
                     clearInterval(promise.intervalId);
                     promise.fulfilled = true;
                     PromiseRepository.savePromises(promises.value);
-                    confetti({
-                        particleCount: 100,
-                        spread: 70,
-                        origin: { y: 0.6 }
-                    });
+                    if (settings.value.enableConfetti) {
+                        confetti({
+                            particleCount: 100,
+                            spread: 70,
+                            origin: { y: 0.6 }
+                        });
+                    }
                 };
 
                 const deletePromise = (index) => {
@@ -247,9 +337,9 @@
                 };
 
                 const getColorBasedOnProgress = (progress) => {
-                    if (progress > 0.5) return '#16a34a'; // Green
-                    if (progress > 0.2) return '#f59e0b'; // Yellow
-                    return '#dc2626'; // Red
+                    if (progress > 0.5) return settings.value.progressColors.green;
+                    if (progress > 0.2) return settings.value.progressColors.yellow;
+                    return settings.value.progressColors.red;
                 };
 
                 const formatTime = (seconds) => {
@@ -268,9 +358,21 @@
                     });
                 };
 
+                const saveSettings = () => {
+                    SettingsRepository.saveSettings(settings.value);
+                    Swal.fire({
+                        title: 'Settings Saved!',
+                        icon: 'success',
+                        animation: false,
+                        timer: 1000,
+                        showConfirmButton: false
+                    });
+                };
+
                 // Restore timers on page load
                 onMounted(() => {
                     restoreTimers();
+                    timeUnit.value = settings.value.defaultTimeUnit;
                 });
 
                 // Cleanup timers on page unload
@@ -287,16 +389,20 @@
                     datetimePicker,
                     promises,
                     filter,
+                    sortBy,
+                    settings,
+                    showSettings,
                     fulfilledCount,
                     brokenCount,
                     ongoingCount,
-                    filteredPromises,
+                    sortedAndFilteredPromises,
                     handleTimeUnitChange,
                     addPromise,
                     fulfillPromise,
                     deletePromise,
                     getColorBasedOnProgress,
-                    formatTime
+                    formatTime,
+                    saveSettings
                 };
             }
         }).mount('#app');
