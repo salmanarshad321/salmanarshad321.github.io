@@ -15,6 +15,17 @@
 
 <body class="bg-gray-100">
     <div id="app" class="min-h-screen p-4">
+        <!-- Seed and Clear Buttons -->
+        <div class="flex gap-2 mb-6">
+            <button @click="seedPromises"
+                class="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500">
+                Seed Example Promises
+            </button>
+            <button @click="clearPromises"
+                class="p-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                Clear All Promises
+            </button>
+        </div>
         <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
             <!-- Header and Settings Button -->
             <div class="flex justify-between items-center mb-6">
@@ -146,9 +157,11 @@
                         </div>
                     </div>
                     <button @click="saveSettings"
-                        class="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Save Settings</button>
+                        class="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Save
+                        Settings</button>
                     <button @click="restoreDefaultSettings"
-                        class="mx-2 p-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500">Restore Defaults</button>
+                        class="mx-2 p-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500">Restore
+                        Defaults</button>
                     <button @click="showSettings = false"
                         class="p-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500">Close</button>
                 </div>
@@ -422,6 +435,71 @@
                     });
                 };
 
+                const seedPromises = () => {
+                    const examplePromises = [
+                        { text: "Complete the remaining tasks", time: 1, unit: "minutes" },
+                        { text: "Discus the project with the team", time: 2, unit: "minutes" },
+                        { text: "Complete the project report", time: 120, unit: "minutes" },
+                        { text: "Go for a 30-minute walk", time: 30, unit: "minutes" },
+                        { text: "Read a book for 1 hour", time: 1, unit: "hours" },
+                        { text: "Finish the presentation slides", time: 2, unit: "hours" },
+                        { text: "Plan the weekend trip", time: 3, unit: "days" }
+                    ];
+
+                    examplePromises.forEach(example => {
+                        const totalTime = example.unit === "minutes" ? example.time * 60 :
+                            example.unit === "hours" ? example.time * 3600 :
+                                example.time * 86400; // days
+                        const promise = {
+                            id: Date.now() + Math.random(), // Unique ID
+                            text: example.text,
+                            totalTime,
+                            remainingTime: totalTime,
+                            fulfilled: false,
+                            broken: false,
+                            intervalId: null,
+                            createdAt: new Date().getTime()
+                        };
+                        promise.intervalId = setInterval(() => updateTimer(promise), 1000);
+                        promises.value.push(promise);
+                    });
+
+                    PromiseRepository.savePromises(promises.value);
+                    Swal.fire({
+                        title: 'Promises Seeded!',
+                        icon: 'success',
+                        animation: false,
+                        timer: 500,
+                        showConfirmButton: false
+                    });
+                };
+
+                const clearPromises = () => {
+                    Swal.fire({
+                        title: 'Are you sure?',
+                        text: "This will delete all promises!",
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#3085d6',
+                        cancelButtonColor: '#d33',
+                        confirmButtonText: 'Yes, clear all!'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            promises.value.forEach(promise => {
+                                if (promise.intervalId) clearInterval(promise.intervalId);
+                            });
+                            promises.value = [];
+                            PromiseRepository.savePromises(promises.value);
+                            Swal.fire({
+                                title: 'All Promises Cleared!',
+                                icon: 'success',
+                                timer: 1000,
+                                showConfirmButton: false
+                            });
+                        }
+                    });
+                };
+
                 onMounted(() => {
                     restoreTimers();
                     timeUnit.value = settings.value.defaultTimeUnit;
@@ -454,7 +532,9 @@
                     getColorBasedOnProgress,
                     formatTime,
                     saveSettings,
-                    restoreDefaultSettings
+                    restoreDefaultSettings,
+                    seedPromises,
+                    clearPromises
                 };
             }
         }).mount('#app');
