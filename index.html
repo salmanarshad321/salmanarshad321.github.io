@@ -10,7 +10,6 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
-    <!-- Add FontAwesome for the settings icon -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 
@@ -20,7 +19,6 @@
             <!-- Header and Settings Button -->
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-3xl font-bold text-center text-green-600">Promise</h1>
-                <!-- Beautiful Settings Button -->
                 <button @click="showSettings = true"
                     class="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all flex items-center gap-2">
                     <i class="fas fa-cog"></i> Settings
@@ -92,7 +90,7 @@
 
             <!-- Promise List -->
             <ul class="space-y-4">
-                <li v-for="(promise, index) in sortedAndFilteredPromises" :key="index"
+                <li v-for="promise in sortedAndFilteredPromises" :key="promise.id"
                     :class="{'border-green-500 bg-green-50': promise.fulfilled, 'border-red-500 bg-red-50': promise.broken}"
                     class="p-4 border rounded-lg">
                     <div class="flex justify-between items-center mb-2">
@@ -104,19 +102,18 @@
                             class="h-full transition-all duration-1000"></div>
                     </div>
                     <div class="flex gap-2 mt-3">
-                        <button @click="fulfillPromise(index)" :disabled="promise.fulfilled || promise.broken"
+                        <button @click="fulfillPromise(promise.id)" :disabled="promise.fulfilled || promise.broken"
                             :class="{'bg-green-600 hover:bg-green-700': !promise.fulfilled && !promise.broken, 'bg-gray-400 cursor-not-allowed': promise.fulfilled || promise.broken}"
                             class="flex-1 p-2 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
                             {{ promise.fulfilled ? 'Fulfilled!' : promise.broken ? 'Broken!' : 'Fulfill Promise' }}
                         </button>
-                        <button @click="deletePromise(index)"
+                        <button @click="deletePromise(promise.id)"
                             class="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">Delete</button>
                     </div>
                 </li>
             </ul>
         </div>
 
-        <!-- Settings Page -->
         <!-- Settings Page -->
         <div v-if="showSettings" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
             <div class="bg-white rounded-lg shadow-md p-6 max-w-md w-full">
@@ -163,7 +160,6 @@
     <script>
         const { createApp, ref, computed, onMounted, onUnmounted, watch } = Vue;
 
-        // Repository Pattern for Local Storage
         const PromiseRepository = {
             getPromises() {
                 const promises = localStorage.getItem('promises');
@@ -205,7 +201,6 @@
                 const settings = ref(SettingsRepository.getSettings());
                 const showSettings = ref(false);
 
-                // Computed Properties
                 const fulfilledCount = computed(() => promises.value.filter(p => p.fulfilled).length);
                 const brokenCount = computed(() => promises.value.filter(p => p.broken).length);
                 const ongoingCount = computed(() => promises.value.filter(p => !p.fulfilled && !p.broken).length);
@@ -291,6 +286,7 @@
                     }
 
                     const promise = {
+                        id: Date.now(), // Unique ID
                         text: newPromise.value,
                         totalTime,
                         remainingTime: totalTime,
@@ -314,42 +310,45 @@
                 };
 
                 const updateTimer = (promise) => {
-                    if (promise.remainingTime <= 0 && promise.broken === false) {
+                    if (promise.remainingTime <= 0) {
                         clearInterval(promise.intervalId);
-                        promise.broken = true;
+                        if (!promise.broken) {
+                            promise.broken = true;
+                            PromiseRepository.savePromises(promises.value);
+                            console.log('Promise broken!');
+                            if (settings.value.enableConfetti) {
+                                confetti({
+                                    particleCount: 100,
+                                    spread: 70,
+                                    origin: { y: 0.6 },
+                                    colors: ['#ff0000', '#ff6666', '#ff9999']
+                                });
+                            }
+                        }
+                        return;
+                    }
+
+                    promise.remainingTime--;
+                    PromiseRepository.savePromises(promises.value);
+                };
+
+                const fulfillPromise = (id) => {
+                    const promise = promises.value.find(p => p.id === id);
+                    if (promise) {
+                        clearInterval(promise.intervalId);
+                        promise.fulfilled = true;
                         PromiseRepository.savePromises(promises.value);
-                        console.log('Promise broken!');
                         if (settings.value.enableConfetti) {
                             confetti({
                                 particleCount: 100,
                                 spread: 70,
-                                origin: { y: 0.6 },
-                                colors: ['#ff0000', '#ff6666', '#ff9999']
+                                origin: { y: 0.6 }
                             });
                         }
-                        return;
-                    } else {
-                        PromiseRepository.savePromises(promises.value);
-                    }
-
-                    promise.remainingTime--;
-                };
-
-                const fulfillPromise = (index) => {
-                    const promise = promises.value[index];
-                    clearInterval(promise.intervalId);
-                    promise.fulfilled = true;
-                    PromiseRepository.savePromises(promises.value);
-                    if (settings.value.enableConfetti) {
-                        confetti({
-                            particleCount: 100,
-                            spread: 70,
-                            origin: { y: 0.6 }
-                        });
                     }
                 };
 
-                const deletePromise = (index) => {
+                const deletePromise = (id) => {
                     Swal.fire({
                         title: 'Are you sure?',
                         text: "You won't be able to revert this!",
@@ -361,10 +360,13 @@
                         confirmButtonText: 'Yes, delete it!'
                     }).then((result) => {
                         if (result.isConfirmed) {
-                            const promise = promises.value[index];
-                            if (promise.intervalId) clearInterval(promise.intervalId);
-                            promises.value.splice(index, 1);
-                            PromiseRepository.savePromises(promises.value);
+                            const index = promises.value.findIndex(p => p.id === id);
+                            if (index !== -1) {
+                                const promise = promises.value[index];
+                                if (promise.intervalId) clearInterval(promise.intervalId);
+                                promises.value.splice(index, 1);
+                                PromiseRepository.savePromises(promises.value);
+                            }
                         }
                     });
                 };
@@ -420,13 +422,11 @@
                     });
                 };
 
-                // Restore timers on page load
                 onMounted(() => {
                     restoreTimers();
                     timeUnit.value = settings.value.defaultTimeUnit;
                 });
 
-                // Cleanup timers on page unload
                 onUnmounted(() => {
                     promises.value.forEach(promise => {
                         if (promise.intervalId) clearInterval(promise.intervalId);
