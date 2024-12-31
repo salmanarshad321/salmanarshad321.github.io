@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Promise App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+</head>
+<body class="bg-gray-100">
+    <div id="app" class="min-h-screen p-4">
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
+            <h1 class="text-3xl font-bold text-center text-green-600 mb-6">Promise</h1>
+
+            <!-- Score Card -->
+            <div class="grid grid-cols-3 gap-4 mb-6 text-center">
+                <div class="p-4 bg-green-50 rounded-lg">
+                    <p class="text-2xl font-bold text-green-600">{{ fulfilledCount }}</p>
+                    <p class="text-sm text-gray-600">Fulfilled</p>
+                </div>
+                <div class="p-4 bg-red-50 rounded-lg">
+                    <p class="text-2xl font-bold text-red-600">{{ brokenCount }}</p>
+                    <p class="text-sm text-gray-600">Broken</p>
+                </div>
+                <div class="p-4 bg-blue-50 rounded-lg">
+                    <p class="text-2xl font-bold text-blue-600">{{ ongoingCount }}</p>
+                    <p class="text-sm text-gray-600">Ongoing</p>
+                </div>
+            </div>
+
+            <!-- Filter Pills -->
+            <div class="flex gap-2 mb-6">
+                <button @click="filter = 'all'" :class="{'bg-green-600 text-white': filter === 'all'}" class="px-4 py-2 rounded-lg border border-green-600 hover:bg-green-600 hover:text-white transition-all">All</button>
+                <button @click="filter = 'ongoing'" :class="{'bg-blue-600 text-white': filter === 'ongoing'}" class="px-4 py-2 rounded-lg border border-blue-600 hover:bg-blue-600 hover:text-white transition-all">Ongoing</button>
+                <button @click="filter = 'fulfilled'" :class="{'bg-green-600 text-white': filter === 'fulfilled'}" class="px-4 py-2 rounded-lg border border-green-600 hover:bg-green-600 hover:text-white transition-all">Fulfilled</button>
+                <button @click="filter = 'broken'" :class="{'bg-red-600 text-white': filter === 'broken'}" class="px-4 py-2 rounded-lg border border-red-600 hover:bg-red-600 hover:text-white transition-all">Broken</button>
+            </div>
+
+            <!-- Add Promise Section -->
+            <div class="flex flex-col gap-4 mb-6">
+                <input v-model="newPromise" type="text" placeholder="Enter your promise" class="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                <div class="flex gap-4">
+                    <select v-model="timeUnit" @change="handleTimeUnitChange" class="p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                        <option value="minutes">Minutes</option>
+                        <option value="hours">Hours</option>
+                        <option value="days">Days</option>
+                        <option value="datetime">Select Date & Time</option>
+                    </select>
+                    <input v-if="timeUnit !== 'datetime'" v-model="newTime" type="number" placeholder="Time" class="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                    <input v-else ref="datetimePicker" type="text" placeholder="Select Date & Time" class="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                </div>
+                <button @click="addPromise" class="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500">Add Promise</button>
+            </div>
+
+            <!-- Promise List -->
+            <ul class="space-y-4">
+                <li v-for="(promise, index) in filteredPromises" :key="index" :class="{'border-green-500 bg-green-50': promise.fulfilled, 'border-red-500 bg-red-50': promise.broken}" class="p-4 border rounded-lg">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-lg font-semibold">{{ promise.text }}</span>
+                        <span class="text-sm text-gray-600">{{ formatTime(promise.remainingTime) }}</span>
+                    </div>
+                    <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div :style="{ width: `${(promise.remainingTime / promise.totalTime) * 100}%`, backgroundColor: getColorBasedOnProgress(promise.remainingTime / promise.totalTime) }" class="h-full transition-all duration-1000"></div>
+                    </div>
+                    <div class="flex gap-2 mt-3">
+                        <button @click="fulfillPromise(index)" :disabled="promise.fulfilled || promise.broken" :class="{'bg-green-600 hover:bg-green-700': !promise.fulfilled && !promise.broken, 'bg-gray-400 cursor-not-allowed': promise.fulfilled || promise.broken}" class="flex-1 p-2 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                            {{ promise.fulfilled ? 'Fulfilled!' : promise.broken ? 'Broken!' : 'Fulfill Promise' }}
+                        </button>
+                        <button @click="deletePromise(index)" class="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">Delete</button>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+
+// Repository Pattern for Local Storage
+const PromiseRepository = {
+    getPromises() {
+        const promises = localStorage.getItem('promises');
+        return promises ? JSON.parse(promises) : [];
+    },
+    savePromises(promises) {
+        localStorage.setItem('promises', JSON.stringify(promises));
+    }
+};
+
+createApp({
+    setup() {
+        const newPromise = ref('');
+        const newTime = ref('');
+        const timeUnit = ref('minutes');
+        const datetimePicker = ref(null);
+        const flatpickrInstance = ref(null);
+        const promises = ref(PromiseRepository.getPromises());
+        const filter = ref('all');
+
+        // Computed Properties
+        const fulfilledCount = computed(() => promises.value.filter(p => p.fulfilled).length);
+        const brokenCount = computed(() => promises.value.filter(p => p.broken).length);
+        const ongoingCount = computed(() => promises.value.filter(p => !p.fulfilled && !p.broken).length);
+
+        const filteredPromises = computed(() => {
+            switch (filter.value) {
+                case 'ongoing':
+                    return promises.value.filter(p => !p.fulfilled && !p.broken);
+                case 'fulfilled':
+                    return promises.value.filter(p => p.fulfilled);
+                case 'broken':
+                    return promises.value.filter(p => p.broken);
+                default:
+                    return promises.value;
+            }
+        });
+
+        const handleTimeUnitChange = () => {
+            if (timeUnit.value === 'datetime') {
+                flatpickrInstance.value = flatpickr(datetimePicker.value, {
+                    enableTime: true,
+                    dateFormat: 'Y-m-d H:i',
+                    minDate: 'today',
+                    defaultDate: new Date(),
+                    onChange: (selectedDates) => {
+                        newTime.value = selectedDates[0];
+                    }
+                });
+            } else {
+                if (flatpickrInstance.value) {
+                    flatpickrInstance.value.destroy();
+                    flatpickrInstance.value = null;
+                }
+            }
+        };
+
+        const addPromise = () => {
+            if (!newPromise.value) {
+                alert('Please enter a valid promise.');
+                return;
+            }
+
+            let totalTime = 0;
+            if (timeUnit.value === 'datetime') {
+                const selectedDate = new Date(newTime.value);
+                const now = new Date();
+                if (selectedDate <= now) {
+                    alert('Please select a future date and time.');
+                    return;
+                }
+                totalTime = Math.floor((selectedDate - now) / 1000); // Convert to seconds
+            } else {
+                const time = parseFloat(newTime.value);
+                if (isNaN(time) || time <= 0) {
+                    alert('Please enter a valid time.');
+                    return;
+                }
+                switch (timeUnit.value) {
+                    case 'minutes':
+                        totalTime = time * 60;
+                        break;
+                    case 'hours':
+                        totalTime = time * 3600;
+                        break;
+                    case 'days':
+                        totalTime = time * 86400;
+                        break;
+                }
+            }
+
+            const promise = {
+                text: newPromise.value,
+                totalTime,
+                remainingTime: totalTime,
+                fulfilled: false,
+                broken: false,
+                intervalId: null
+            };
+
+            promise.intervalId = setInterval(() => updateTimer(promise), 1000);
+            promises.value.push(promise);
+            PromiseRepository.savePromises(promises.value);
+
+            newPromise.value = '';
+            newTime.value = '';
+            if (flatpickrInstance.value) {
+                flatpickrInstance.value.clear();
+            }
+        };
+
+        const updateTimer = (promise) => {
+            if (promise.remainingTime <= 0) {
+                clearInterval(promise.intervalId);
+                promise.broken = true;
+                PromiseRepository.savePromises(promises.value);
+                return;
+            }
+            promise.remainingTime--;
+        };
+
+        const fulfillPromise = (index) => {
+            const promise = promises.value[index];
+            clearInterval(promise.intervalId);
+            promise.fulfilled = true;
+            PromiseRepository.savePromises(promises.value);
+        };
+
+        const deletePromise = (index) => {
+            const promise = promises.value[index];
+            if (promise.intervalId) clearInterval(promise.intervalId);
+            promises.value.splice(index, 1);
+            PromiseRepository.savePromises(promises.value);
+        };
+
+        const getColorBasedOnProgress = (progress) => {
+            if (progress > 0.5) return '#16a34a'; // Green
+            if (progress > 0.2) return '#f59e0b'; // Yellow
+            return '#dc2626'; // Red
+        };
+
+        const formatTime = (seconds) => {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${days > 0 ? `${days}d ` : ''}${hours > 0 ? `${hours}h ` : ''}${mins}m ${secs}s`;
+        };
+
+        // Restore timers on page load
+        onMounted(() => {
+            promises.value.forEach(promise => {
+                if (!promise.fulfilled && !promise.broken) {
+                    promise.intervalId = setInterval(() => updateTimer(promise), 1000);
+                }
+            });
+        });
+
+        // Cleanup timers on page unload
+        onUnmounted(() => {
+            promises.value.forEach(promise => {
+                if (promise.intervalId) clearInterval(promise.intervalId);
+            });
+        });
+
+        return {
+            newPromise,
+            newTime,
+            timeUnit,
+            datetimePicker,
+            promises,
+            filter,
+            fulfilledCount,
+            brokenCount,
+            ongoingCount,
+            filteredPromises,
+            handleTimeUnitChange,
+            addPromise,
+            fulfillPromise,
+            deletePromise,
+            getColorBasedOnProgress,
+            formatTime
+        };
+    }
+}).mount('#app');
+    </script>
+</body>
+</html>
