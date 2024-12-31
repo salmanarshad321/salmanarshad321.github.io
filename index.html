@@ -7,6 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
 </head>
 <body class="bg-gray-100">
     <div id="app" class="min-h-screen p-4">
@@ -15,15 +17,15 @@
 
             <!-- Score Card -->
             <div class="grid grid-cols-3 gap-4 mb-6 text-center">
-                <div class="p-4 bg-green-50 rounded-lg">
+                <div class="p-4 bg-green-50 rounded-lg cursor-pointer hover:bg-green-100 transition-all" @click="filter = 'fulfilled'">
                     <p class="text-2xl font-bold text-green-600">{{ fulfilledCount }}</p>
                     <p class="text-sm text-gray-600">Fulfilled</p>
                 </div>
-                <div class="p-4 bg-red-50 rounded-lg">
+                <div class="p-4 bg-red-50 rounded-lg cursor-pointer hover:bg-red-100 transition-all" @click="filter = 'broken'">
                     <p class="text-2xl font-bold text-red-600">{{ brokenCount }}</p>
                     <p class="text-sm text-gray-600">Broken</p>
                 </div>
-                <div class="p-4 bg-blue-50 rounded-lg">
+                <div class="p-4 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition-all" @click="filter = 'ongoing'">
                     <p class="text-2xl font-bold text-blue-600">{{ ongoingCount }}</p>
                     <p class="text-sm text-gray-600">Ongoing</p>
                 </div>
@@ -78,198 +80,226 @@
     <script>
         const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 
-// Repository Pattern for Local Storage
-const PromiseRepository = {
-    getPromises() {
-        const promises = localStorage.getItem('promises');
-        return promises ? JSON.parse(promises) : [];
-    },
-    savePromises(promises) {
-        localStorage.setItem('promises', JSON.stringify(promises));
-    }
-};
-
-createApp({
-    setup() {
-        const newPromise = ref('');
-        const newTime = ref('');
-        const timeUnit = ref('minutes');
-        const datetimePicker = ref(null);
-        const flatpickrInstance = ref(null);
-        const promises = ref(PromiseRepository.getPromises());
-        const filter = ref('all');
-
-        // Computed Properties
-        const fulfilledCount = computed(() => promises.value.filter(p => p.fulfilled).length);
-        const brokenCount = computed(() => promises.value.filter(p => p.broken).length);
-        const ongoingCount = computed(() => promises.value.filter(p => !p.fulfilled && !p.broken).length);
-
-        const filteredPromises = computed(() => {
-            switch (filter.value) {
-                case 'ongoing':
-                    return promises.value.filter(p => !p.fulfilled && !p.broken);
-                case 'fulfilled':
-                    return promises.value.filter(p => p.fulfilled);
-                case 'broken':
-                    return promises.value.filter(p => p.broken);
-                default:
-                    return promises.value;
+        // Repository Pattern for Local Storage
+        const PromiseRepository = {
+            getPromises() {
+                const promises = localStorage.getItem('promises');
+                return promises ? JSON.parse(promises) : [];
+            },
+            savePromises(promises) {
+                localStorage.setItem('promises', JSON.stringify(promises));
             }
-        });
+        };
 
-        const handleTimeUnitChange = () => {
-            if (timeUnit.value === 'datetime') {
-                flatpickrInstance.value = flatpickr(datetimePicker.value, {
-                    enableTime: true,
-                    dateFormat: 'Y-m-d H:i',
-                    minDate: 'today',
-                    defaultDate: new Date(),
-                    onChange: (selectedDates) => {
-                        newTime.value = selectedDates[0];
+        createApp({
+            setup() {
+                const newPromise = ref('');
+                const newTime = ref('');
+                const timeUnit = ref('minutes');
+                const datetimePicker = ref(null);
+                const flatpickrInstance = ref(null);
+                const promises = ref(PromiseRepository.getPromises());
+                const filter = ref('all');
+
+                // Computed Properties
+                const fulfilledCount = computed(() => promises.value.filter(p => p.fulfilled).length);
+                const brokenCount = computed(() => promises.value.filter(p => p.broken).length);
+                const ongoingCount = computed(() => promises.value.filter(p => !p.fulfilled && !p.broken).length);
+
+                const filteredPromises = computed(() => {
+                    switch (filter.value) {
+                        case 'ongoing':
+                            return promises.value.filter(p => !p.fulfilled && !p.broken);
+                        case 'fulfilled':
+                            return promises.value.filter(p => p.fulfilled);
+                        case 'broken':
+                            return promises.value.filter(p => p.broken);
+                        default:
+                            return promises.value;
                     }
                 });
-            } else {
-                if (flatpickrInstance.value) {
-                    flatpickrInstance.value.destroy();
-                    flatpickrInstance.value = null;
-                }
-            }
-        };
 
-        const addPromise = () => {
-            if (!newPromise.value) {
-                alert('Please enter a valid promise.');
-                return;
-            }
+                const handleTimeUnitChange = () => {
+                    if (timeUnit.value === 'datetime') {
+                        flatpickrInstance.value = flatpickr(datetimePicker.value, {
+                            enableTime: true,
+                            dateFormat: 'Y-m-d H:i',
+                            minDate: 'today',
+                            defaultDate: new Date(),
+                            onChange: (selectedDates) => {
+                                newTime.value = selectedDates[0];
+                            }
+                        });
+                    } else {
+                        if (flatpickrInstance.value) {
+                            flatpickrInstance.value.destroy();
+                            flatpickrInstance.value = null;
+                        }
+                    }
+                };
 
-            let totalTime = 0;
-            if (timeUnit.value === 'datetime') {
-                const selectedDate = new Date(newTime.value);
-                const now = new Date();
-                if (selectedDate <= now) {
-                    alert('Please select a future date and time.');
-                    return;
-                }
-                totalTime = Math.floor((selectedDate - now) / 1000); // Convert to seconds
-            } else {
-                const time = parseFloat(newTime.value);
-                if (isNaN(time) || time <= 0) {
-                    alert('Please enter a valid time.');
-                    return;
-                }
-                switch (timeUnit.value) {
-                    case 'minutes':
-                        totalTime = time * 60;
-                        break;
-                    case 'hours':
-                        totalTime = time * 3600;
-                        break;
-                    case 'days':
-                        totalTime = time * 86400;
-                        break;
-                }
-            }
+                const addPromise = () => {
+                    if (!newPromise.value) {
+                        alert('Please enter a valid promise.');
+                        return;
+                    }
 
-            const promise = {
-                text: newPromise.value,
-                totalTime,
-                remainingTime: totalTime,
-                fulfilled: false,
-                broken: false,
-                intervalId: null
-            };
+                    let totalTime = 0;
+                    if (timeUnit.value === 'datetime') {
+                        const selectedDate = new Date(newTime.value);
+                        const now = new Date();
+                        if (selectedDate <= now) {
+                            alert('Please select a future date and time.');
+                            return;
+                        }
+                        totalTime = Math.floor((selectedDate - now) / 1000); // Convert to seconds
+                    } else {
+                        const time = parseFloat(newTime.value);
+                        if (isNaN(time) || time <= 0) {
+                            alert('Please enter a valid time.');
+                            return;
+                        }
+                        switch (timeUnit.value) {
+                            case 'minutes':
+                                totalTime = time * 60;
+                                break;
+                            case 'hours':
+                                totalTime = time * 3600;
+                                break;
+                            case 'days':
+                                totalTime = time * 86400;
+                                break;
+                        }
+                    }
 
-            promise.intervalId = setInterval(() => updateTimer(promise), 1000);
-            promises.value.push(promise);
-            PromiseRepository.savePromises(promises.value);
+                    const promise = {
+                        text: newPromise.value,
+                        totalTime,
+                        remainingTime: totalTime,
+                        fulfilled: false,
+                        broken: false,
+                        intervalId: null
+                    };
 
-            newPromise.value = '';
-            newTime.value = '';
-            if (flatpickrInstance.value) {
-                flatpickrInstance.value.clear();
-            }
-
-            restoreTimers();
-        };
-
-        const updateTimer = (promise) => {
-            if (promise.remainingTime <= 0) {
-                clearInterval(promise.intervalId);
-                promise.broken = true;
-                PromiseRepository.savePromises(promises.value);
-                return;
-            }
-            promise.remainingTime--;
-        };
-
-        const fulfillPromise = (index) => {
-            const promise = promises.value[index];
-            clearInterval(promise.intervalId);
-            promise.fulfilled = true;
-            PromiseRepository.savePromises(promises.value);
-        };
-
-        const deletePromise = (index) => {
-            const promise = promises.value[index];
-            if (promise.intervalId) clearInterval(promise.intervalId);
-            promises.value.splice(index, 1);
-            PromiseRepository.savePromises(promises.value);
-        };
-
-        const getColorBasedOnProgress = (progress) => {
-            if (progress > 0.5) return '#16a34a'; // Green
-            if (progress > 0.2) return '#f59e0b'; // Yellow
-            return '#dc2626'; // Red
-        };
-
-        const formatTime = (seconds) => {
-            const days = Math.floor(seconds / 86400);
-            const hours = Math.floor((seconds % 86400) / 3600);
-            const mins = Math.floor((seconds % 3600) / 60);
-            const secs = seconds % 60;
-            return `${days > 0 ? `${days}d ` : ''}${hours > 0 ? `${hours}h ` : ''}${mins}m ${secs}s`;
-        };
-
-        const restoreTimers = () => {
-            promises.value.forEach(promise => {
-                if (!promise.fulfilled && !promise.broken) {
                     promise.intervalId = setInterval(() => updateTimer(promise), 1000);
-                }
-            });
-        };
+                    promises.value.push(promise);
+                    PromiseRepository.savePromises(promises.value);
 
-        // Restore timers on page load
-        onMounted(() => {
-            restoreTimers();
-        });
+                    newPromise.value = '';
+                    newTime.value = '';
+                    if (flatpickrInstance.value) {
+                        flatpickrInstance.value.clear();
+                    }
 
-        // Cleanup timers on page unload
-        onUnmounted(() => {
-            promises.value.forEach(promise => {
-                if (promise.intervalId) clearInterval(promise.intervalId);
-            });
-        });
+                    restoreTimers();
+                };
 
-        return {
-            newPromise,
-            newTime,
-            timeUnit,
-            datetimePicker,
-            promises,
-            filter,
-            fulfilledCount,
-            brokenCount,
-            ongoingCount,
-            filteredPromises,
-            handleTimeUnitChange,
-            addPromise,
-            fulfillPromise,
-            deletePromise,
-            getColorBasedOnProgress,
-            formatTime
-        };
-    }
-}).mount('#app');
+                const updateTimer = (promise) => {
+                    if (promise.remainingTime <= 0) {
+                        clearInterval(promise.intervalId);
+                        promise.broken = true;
+                        PromiseRepository.savePromises(promises.value);
+                        console.log('Promise broken!');
+                        confetti({
+                            particleCount: 100,
+                            spread: 70,
+                            origin: { y: 0.6 },
+                            colors: ['#ff0000', '#ff6666', '#ff9999']
+                        });
+                        return;
+                    } else {
+                        PromiseRepository.savePromises(promises.value);
+                    }
+
+                    promise.remainingTime--;
+                };
+
+                const fulfillPromise = (index) => {
+                    const promise = promises.value[index];
+                    clearInterval(promise.intervalId);
+                    promise.fulfilled = true;
+                    PromiseRepository.savePromises(promises.value);
+                    confetti({
+                        particleCount: 100,
+                        spread: 70,
+                        origin: { y: 0.6 }
+                    });
+                };
+
+                const deletePromise = (index) => {
+                    Swal.fire({
+                        title: 'Are you sure?',
+                        text: "You won't be able to revert this!",
+                        icon: 'warning',
+                        animation: false,
+                        showCancelButton: true,
+                        confirmButtonColor: '#3085d6',
+                        cancelButtonColor: '#d33',
+                        confirmButtonText: 'Yes, delete it!'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            const promise = promises.value[index];
+                            if (promise.intervalId) clearInterval(promise.intervalId);
+                            promises.value.splice(index, 1);
+                            PromiseRepository.savePromises(promises.value);
+                        }
+                    });
+                };
+
+                const getColorBasedOnProgress = (progress) => {
+                    if (progress > 0.5) return '#16a34a'; // Green
+                    if (progress > 0.2) return '#f59e0b'; // Yellow
+                    return '#dc2626'; // Red
+                };
+
+                const formatTime = (seconds) => {
+                    const days = Math.floor(seconds / 86400);
+                    const hours = Math.floor((seconds % 86400) / 3600);
+                    const mins = Math.floor((seconds % 3600) / 60);
+                    const secs = seconds % 60;
+                    return `${days > 0 ? `${days}d ` : ''}${hours > 0 ? `${hours}h ` : ''}${mins}m ${secs}s`;
+                };
+
+                const restoreTimers = () => {
+                    promises.value.forEach(promise => {
+                        if (!promise.fulfilled && !promise.broken) {
+                            promise.intervalId = setInterval(() => updateTimer(promise), 1000);
+                        }
+                    });
+                };
+
+                // Restore timers on page load
+                onMounted(() => {
+                    restoreTimers();
+                });
+
+                // Cleanup timers on page unload
+                onUnmounted(() => {
+                    promises.value.forEach(promise => {
+                        if (promise.intervalId) clearInterval(promise.intervalId);
+                    });
+                });
+
+                return {
+                    newPromise,
+                    newTime,
+                    timeUnit,
+                    datetimePicker,
+                    promises,
+                    filter,
+                    fulfilledCount,
+                    brokenCount,
+                    ongoingCount,
+                    filteredPromises,
+                    handleTimeUnitChange,
+                    addPromise,
+                    fulfillPromise,
+                    deletePromise,
+                    getColorBasedOnProgress,
+                    formatTime
+                };
+            }
+        }).mount('#app');
     </script>
 </body>
 </html>
