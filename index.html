@@ -18,6 +18,7 @@
       color: #f5f5f5;
       overflow: hidden;
       background-color: #0f0f0f;
+      cursor: none;
     }
     
     #canvas {
@@ -92,6 +93,27 @@
       transform: translate(-50%, -50%);
       z-index: -1;
     }
+
+    #custom-cursor {
+      position: fixed;
+      width: 40px;
+      height: 40px;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 9999;
+      mix-blend-mode: difference;
+      transition: width 0.3s, height 0.3s;
+    }
+    
+    #brush-trail {
+      position: fixed;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
     
     @keyframes fadeIn {
       to {
@@ -120,6 +142,8 @@
   </style>
 </head>
 <body>
+  <div id="custom-cursor"></div>
+  <canvas id="brush-trail"></canvas>
   <canvas id="canvas"></canvas>
   
   <!-- Zen circle (Enso) background -->
@@ -139,6 +163,8 @@
   <div class="container">
     <div class="content">
       <img src="kokoro.svg" alt="Kokoro" class="kokoro-logo" style="width: 400px; opacity: 0; transform: translateY(30px); animation: fadeIn 1.5s forwards;">
+      <!-- art gallery -->
+      <div class="coming-soon" style="margin-top: 15px;width: 400px; opacity: 0; transform: translateY(30px); animation: fadeIn 1.5s forwards;">Art Gallery</div>
       <div class="coming-soon">Coming Soon</div>
       <div style="display: flex; align-items: center; justify-content: center; margin-top: 2rem; opacity: 0.5; transition: opacity 0.3s ease;" class="hover:opacity-100">
         <a href="https://instagram.com/artby_kokoro" target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; gap: 0.5rem; text-decoration: none;">
@@ -154,52 +180,312 @@
   </div>
 
   <script>
-    // Three.js background effect - more subtle and minimal
+    // Custom cursor
+    const cursor = document.getElementById('custom-cursor');
+    
+    document.addEventListener('mousemove', (e) => {
+      cursor.style.left = e.clientX + 'px';
+      cursor.style.top = e.clientY + 'px';
+    });
+    
+    // Brush trail effect
+    const brushCanvas = document.getElementById('brush-trail');
+    const brushCtx = brushCanvas.getContext('2d');
+    
+    brushCanvas.width = window.innerWidth;
+    brushCanvas.height = window.innerHeight;
+    
+    let brushStrokes = [];
+    let isDrawing = false;
+    
+    // Japanese brush stroke effect
+    class BrushStroke {
+      constructor(x, y) {
+        this.points = [{x, y, size: Math.random() * 2 + 1}];
+        this.age = 0;
+        this.maxAge = 120;
+        this.color = `rgba(${Math.floor(Math.random() * 20 + 235)}, ${Math.floor(Math.random() * 20 + 235)}, ${Math.floor(Math.random() * 20 + 235)}, 0.1)`;
+      }
+      
+      addPoint(x, y) {
+        const lastPoint = this.points[this.points.length - 1];
+        const dx = x - lastPoint.x;
+        const dy = y - lastPoint.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance > 5) {
+          const size = Math.max(1, lastPoint.size * (0.95 + Math.random() * 0.1));
+          this.points.push({x, y, size});
+        }
+      }
+      
+      draw(ctx) {
+        if (this.points.length < 2) return;
+        
+        const opacity = 1 - (this.age / this.maxAge);
+        ctx.strokeStyle = this.color.replace('0.1', opacity * 0.1);
+        ctx.lineWidth = 1;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        ctx.beginPath();
+        ctx.moveTo(this.points[0].x, this.points[0].y);
+        
+        for (let i = 1; i < this.points.length; i++) {
+          const p1 = this.points[i - 1];
+          const p2 = this.points[i];
+          
+          // Smooth curve between points
+          const cx = (p1.x + p2.x) / 2;
+          const cy = (p1.y + p2.y) / 2;
+          
+          ctx.quadraticCurveTo(p1.x, p1.y, cx, cy);
+        }
+        
+        ctx.stroke();
+        
+        // Draw varying pressure points
+        this.points.forEach(point => {
+          ctx.beginPath();
+          ctx.fillStyle = this.color.replace('0.1', opacity * 0.05);
+          ctx.arc(point.x, point.y, point.size, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        
+        this.age++;
+      }
+    }
+    
+    document.addEventListener('mousedown', (e) => {
+      isDrawing = true;
+      const newStroke = new BrushStroke(e.clientX, e.clientY);
+      brushStrokes.push(newStroke);
+      cursor.style.width = '20px';
+      cursor.style.height = '20px';
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (isDrawing && brushStrokes.length > 0) {
+        const currentStroke = brushStrokes[brushStrokes.length - 1];
+        currentStroke.addPoint(e.clientX, e.clientY);
+        
+        // Add ripple effect to three.js particles near mouse
+        rippleEffect(e.clientX, e.clientY);
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      isDrawing = false;
+      cursor.style.width = '40px';
+      cursor.style.height = '40px';
+    });
+    
+    function animateBrushStrokes() {
+      brushCtx.clearRect(0, 0, brushCanvas.width, brushCanvas.height);
+      
+      brushStrokes = brushStrokes.filter(stroke => stroke.age < stroke.maxAge);
+      brushStrokes.forEach(stroke => stroke.draw(brushCtx));
+      
+      requestAnimationFrame(animateBrushStrokes);
+    }
+    
+    animateBrushStrokes();
+    
+    // Three.js background effect
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+    const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setClearColor(0x0f0f0f);
     
     camera.position.z = 50;
     
-    // Create subtle ink-wash inspired particles
+    // Create ink-wash inspired particles
     const particlesGeometry = new THREE.BufferGeometry();
     const particleCount = 800;
     
     const posArray = new Float32Array(particleCount * 3);
+    const velocities = new Float32Array(particleCount * 3);
+    const sizes = new Float32Array(particleCount);
     
-    for(let i = 0; i < particleCount * 3; i++) {
-      // Create a more layered, ink-wash inspired particle distribution
-      const axis = i % 3;
-      if (axis === 0) { // x-axis
-        posArray[i] = (Math.random() - 0.5) * 80;
-      } else if (axis === 1) { // y-axis
-        posArray[i] = (Math.random() - 0.5) * 60;
-      } else { // z-axis
-        posArray[i] = (Math.random() - 0.5) * 30;
-      }
+    for(let i = 0; i < particleCount * 3; i += 3) {
+      // Position
+      posArray[i] = (Math.random() - 0.5) * 80;  // x
+      posArray[i+1] = (Math.random() - 0.5) * 60; // y
+      posArray[i+2] = (Math.random() - 0.5) * 30; // z
+      
+      // Velocity
+      velocities[i] = (Math.random() - 0.5) * 0.02;
+      velocities[i+1] = (Math.random() - 0.5) * 0.01;
+      velocities[i+2] = (Math.random() - 0.5) * 0.005;
+      
+      // Size variation for ink-like effect
+      sizes[i/3] = Math.random() * 2 + 0.5;
     }
     
     particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+    particlesGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
     
-    // More subtle particle material - ink wash inspired
-    const particlesMaterial = new THREE.PointsMaterial({
-      size: 0.1,
-      color: 0xcccccc,
+    // Custom shader material for ink-like particles
+    const particlesMaterial = new THREE.ShaderMaterial({
+      vertexShader: `
+        attribute float size;
+        varying vec3 vPosition;
+        
+        void main() {
+          vPosition = position;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = size * (30.0 / -mvPosition.z);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vPosition;
+        
+        void main() {
+          float distance = length(gl_PointCoord - vec2(0.5));
+          if (distance > 0.5) discard;
+          
+          float opacity = 0.5 * (1.0 - distance * 2.0);
+          gl_FragColor = vec4(1.0, 1.0, 1.0, opacity);
+        }
+      `,
       transparent: true,
-      opacity: 0.4
+      depthWrite: false
     });
     
     const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
     scene.add(particlesMesh);
     
-    // Animation - very subtle movement
+    // Mouse interaction variables
+    const mouse = new THREE.Vector2();
+    const raycaster = new THREE.Raycaster();
+    let mouseX = 0;
+    let mouseY = 0;
+    
+    document.addEventListener('mousemove', (event) => {
+      // Convert mouse position to normalized device coordinates
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      
+      mouseX = event.clientX;
+      mouseY = event.clientY;
+    });
+    
+    // Add ripple effect to particles
+    function rippleEffect(x, y) {
+      const mouseXNormalized = (x / window.innerWidth) * 2 - 1;
+      const mouseYNormalized = -(y / window.innerHeight) * 2 + 1;
+      
+      const positions = particlesGeometry.attributes.position.array;
+      
+      for (let i = 0; i < positions.length; i += 3) {
+        const particle3D = new THREE.Vector3(positions[i], positions[i+1], positions[i+2]);
+        const projectedParticle = particle3D.clone().project(camera);
+        
+        const dx = projectedParticle.x - mouseXNormalized;
+        const dy = projectedParticle.y - mouseYNormalized;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < 0.1) {
+          const force = 0.1 * (1 - distance * 10);
+          velocities[i] += dx * force;
+          velocities[i+1] += dy * force;
+        }
+      }
+    }
+    
+    // Create Japanese calligraphy style ink droplets
+    function createInkSpot(x, y) {
+      const inkGeometry = new THREE.CircleGeometry(Math.random() * 0.5 + 0.2, 32);
+      const inkMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.03
+      });
+      
+      const ink = new THREE.Mesh(inkGeometry, inkMaterial);
+      
+      // Convert screen coordinates to 3D space
+      const vector = new THREE.Vector3();
+      vector.set(
+        (x / window.innerWidth) * 2 - 1,
+        -(y / window.innerHeight) * 2 + 1,
+        0.5
+      );
+      vector.unproject(camera);
+      
+      const dir = vector.sub(camera.position).normalize();
+      const distance = -camera.position.z / dir.z;
+      const pos = camera.position.clone().add(dir.multiplyScalar(distance));
+      
+      ink.position.set(pos.x, pos.y, pos.z);
+      ink.scale.x = Math.random() * 0.5 + 0.5; // Oval shape like ink droplet
+      
+      // Random rotation for natural ink feel
+      ink.rotation.z = Math.random() * Math.PI * 2;
+      
+      scene.add(ink);
+      
+      // Fade out and remove after some time
+      setTimeout(() => {
+        scene.remove(ink);
+      }, 5000);
+    }
+    
+    // Click to create ink droplets
+    document.addEventListener('click', (event) => {
+      for (let i = 0; i < 3; i++) {
+        createInkSpot(
+          event.clientX + (Math.random() - 0.5) * 20,
+          event.clientY + (Math.random() - 0.5) * 20
+        );
+      }
+    });
+    
+    // Animation loop
+    let frame = 0;
     function animate() {
       requestAnimationFrame(animate);
+      frame++;
       
+      // Gentle particle movement
+      const positions = particlesGeometry.attributes.position.array;
+      
+      for (let i = 0; i < positions.length; i += 3) {
+        // Apply velocity
+        positions[i] += velocities[i];
+        positions[i+1] += velocities[i+1];
+        positions[i+2] += velocities[i+2];
+        
+        // Dampen velocity for stability
+        velocities[i] *= 0.99;
+        velocities[i+1] *= 0.99;
+        velocities[i+2] *= 0.99;
+        
+        // Boundary check - create ink wash edge effect
+        if (Math.abs(positions[i]) > 40) {
+          velocities[i] *= -0.5;
+        }
+        if (Math.abs(positions[i+1]) > 30) {
+          velocities[i+1] *= -0.5;
+        }
+        if (Math.abs(positions[i+2]) > 15) {
+          velocities[i+2] *= -0.5;
+        }
+      }
+      
+      particlesGeometry.attributes.position.needsUpdate = true;
+      
+      // Very subtle overall movement
       particlesMesh.rotation.x += 0.0002;
       particlesMesh.rotation.y += 0.0003;
+      
+      // Mouse influence - create a gentle flow effect like ink in water
+      if (frame % 2 === 0) {
+        particlesMesh.rotation.x += mouse.y * 0.0002;
+        particlesMesh.rotation.y += mouse.x * 0.0002;
+      }
       
       renderer.render(scene, camera);
     }
@@ -209,6 +495,9 @@
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      
+      brushCanvas.width = window.innerWidth;
+      brushCanvas.height = window.innerHeight;
     });
     
     animate();
